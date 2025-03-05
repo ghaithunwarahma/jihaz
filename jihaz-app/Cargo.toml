@@ -1,0 +1,50 @@
+[package]
+name = "jihaz-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jihaz           = { workspace = true }
+jihaz-deferred  = { workspace = true, features = ["xilem"]}
+jihaz-macros    = { workspace = true }
+jihaz-primal    = { workspace = true }
+serde           = { workspace = true }
+tracing         = { workspace = true, features = ["default"] }
+
+# scraper         = { version = "*" }
+# glazier         = { git = "https://github.com/linebender/glazier", features = ["serde"] }
+accesskit       = { version = "0.16.0" }
+anyhow          = { version = "1.0" }
+bitflags        = "1.3.2"
+chrono          = "*"
+ico             = { version = "0.3.0" }
+lapce-xi-rope   = { version = "0.3.2", features = ["serde"] }
+lsp-types       = { version = "0.93", features = ["proposed"] }
+masonry         = { git = "https://github.com/linebender/xilem.git" }
+parking_lot         = { version = "0.12.0" }
+parley          = { git = "https://github.com/lapce/parley" }
+resvg           = { version = "0.41.0" }
+scraper         = { version = "*", optional = true }
+smallvec        = { version = "1.13.1", features = ["const_generics"] }
+strum           = "0.21.0" # follow same version as system-deps in lockfile
+strum_macros    = "0.21.1" # ditto
+tauri-icns      = { version = "0.1.0" }
+time            = "0.3.20"
+tokio = { version = "1.39.1", features = ["rt", "rt-multi-thread", "time"] }
+tree-sitter     = "0.20.10"
+usvg            = { version = "0.41.0" }
+vello           = { version = "0.1.0" }
+winit = "0.30.0"
+xilem           = { git = "https://github.com/linebender/xilem.git" }
+xilem_core      = { git = "https://github.com/linebender/xilem.git" }
+
+[[bin]]
+name = "jihaz-app"
+path = "src/bin/jihaz_app.rs"
+
+[[bin]]
+name = "jihaz-app-sample"
+path = "src/bin/jihaz_app_sample.rs"
+
+[dev-dependencies]
+insta = { version = "1.38.0" }
