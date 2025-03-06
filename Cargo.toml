@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-    # "jihaz-app",
 members = [
+    "jihaz-app",
     "jihaz-composer",
     "jihaz-deferred",
     "jihaz-macros",

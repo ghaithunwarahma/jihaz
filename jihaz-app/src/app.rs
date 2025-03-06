@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use xilem::{EventLoop, WidgetView, Xilem};
 use crate::{
     progress::ProgressMessage, 
-    view::{tablet::TabletVi, window::WindowVi}
+    view::{tablet::{tablet, Tablet}, window::Window}
 };
 
 #[derive(Clone)]
@@ -34,7 +34,7 @@ impl AppState {
 }
 
 fn app_logic(state: &mut AppState) -> impl WidgetView<AppState> {
-    WindowVi::new(TabletVi::new(
+    Window::new(tablet(
         state.executable_path.to_string().unwrap_or_default(),
         state.original_icon_path.to_string().unwrap_or_default(),
         state.target_packages_directory_path.to_string().unwrap_or_default(),

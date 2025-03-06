@@ -1,84 +1,67 @@
 use accesskit::Role;
 use smallvec::{smallvec, SmallVec};
-use vello::kurbo::{Insets, Point, Size};
 use masonry::{
-    vello::Scene, AccessCtx, AccessEvent, BoxConstraints, EventCtx, LayoutCtx, LifeCycle, LifeCycleCtx, PaintCtx, PointerEvent, StatusChange, TextEvent, Widget, WidgetId
+    core::{
+        AccessCtx, AccessEvent, BoxConstraints, EventCtx, LayoutCtx, PaintCtx, PointerEvent, TextEvent, Widget, WidgetId, WidgetMut, WidgetPod
+    },
+    vello::{kurbo::{Insets, Point, Size}, Scene}, 
 };
-use xilem::Pod;
-use xilem_core::ViewElement;
-use super::tablet::TabletWi;
+use super::tablet::Tablet;
 
-
-/// Represents the viewed spread of leaves or a leaf of the Quran
-pub struct WindowWi {
-    pub tablet: Pod<TabletWi>
+pub struct Window {
+    pub tablet: WidgetPod<Tablet>
 }
 
-impl WindowWi {
-    pub fn new(tablet: Pod<TabletWi>) -> WindowWi {
+impl Window {
+    pub fn new(tablet: WidgetPod<Tablet>) -> Window {
         Self {
             tablet,
         }
     }
 }
 
-impl ViewElement for WindowWi {
-    type Mut<'a> = &'a mut WindowWi;
+// --- MARK: WIDGETMUT ---
+impl Window {
+    pub fn child_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, Tablet> {
+        this.ctx.get_mut(&mut this.widget.tablet)
+    }
 }
 
-impl Widget for WindowWi {
-    fn on_pointer_event(&mut self, _ctx: &mut EventCtx, _event: &PointerEvent) {
-        // self.tablet.inner.on_pointer_event(ctx, event);
-    }
+impl Widget for Window {
+    fn on_pointer_event(&mut self, _ctx: &mut EventCtx, _event: &PointerEvent) {}
     
-    fn on_text_event(&mut self, _ctx: &mut EventCtx, _event: &TextEvent) {
-        // self.tablet.inner.on_text_event(ctx, event);
-    }
+    fn on_text_event(&mut self, _ctx: &mut EventCtx, _event: &TextEvent) {}
 
-    fn on_access_event(&mut self, _ctx: &mut EventCtx, _event: &AccessEvent) {
-        // self.tablet.inner.on_access_event(ctx, event);
-    }
+    fn on_access_event(&mut self, _ctx: &mut EventCtx, _event: &AccessEvent) {}
 
-    #[allow(missing_docs)]
-    fn on_status_change(&mut self, _ctx: &mut LifeCycleCtx, _event: &StatusChange) {}
-
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle) {
-        // if let LifeCycle::BuildFocusChain = event {
-        //     eprintln!("build focus chain");
-        //     ctx.register_for_focus();
-        //     eprintln!("has focus {}", ctx.is_focused());
-        // }
-        self.tablet.inner.lifecycle(ctx, event);
+    fn register_children(&mut self, ctx: &mut masonry::core::RegisterCtx) {
+        ctx.register_child(&mut self.tablet);
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints) -> Size {
         let padding = Insets::uniform(0.0);
         let new_bc = bc.loosen().shrink((padding.x_value(), padding.y_value()));
         
-        let tablet_size = self.tablet.inner.layout(ctx, &new_bc);
+        let tablet_size = ctx.run_layout(&mut self.tablet, &new_bc);
         let mut origin = Point::new(padding.x0, padding.y0);
         origin.x += 0.5 * (bc.max().width - tablet_size.width);
         origin.y += 0.5 * (bc.max().height - tablet_size.height);
         eprintln!("Tablet BcConstraints: {:?} | Origin: {:?}, Tablet Size {:?}", new_bc, origin, tablet_size);
 
-        ctx.place_child(&mut self.tablet.inner, origin);
+        ctx.place_child(&mut self.tablet, origin);
         bc.max()
     }
 
-    fn paint(&mut self, ctx: &mut PaintCtx, scene: &mut Scene) {
-        self.tablet.inner.paint(ctx, scene);
-    }
+    fn paint(&mut self, _ctx: &mut PaintCtx, _scene: &mut Scene) {}
 
     fn accessibility_role(&self) -> Role {
         Role::Window
     }
 
-    fn accessibility(&mut self, ctx: &mut AccessCtx) {
-        self.tablet.inner.accessibility(ctx);
-    }
+    fn accessibility(&mut self, _ctx: &mut AccessCtx, _node: &mut accesskit::Node) {}
 
     // fn children(&self) -> SmallVec<[WidgetRef<'_, dyn Widget>; 16]> {
     fn children_ids(&self) -> SmallVec<[WidgetId; 16]> {
-        smallvec![self.tablet.inner.id()]
+        smallvec![self.tablet.id()]
     }
 }

@@ -5,6 +5,7 @@ pub mod convert;
 pub mod string;
 pub mod sys_task;
 pub mod time;
+pub mod collection;
 
 // use bits::*;
 

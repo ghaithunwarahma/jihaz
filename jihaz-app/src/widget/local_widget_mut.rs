@@ -1,14 +1,10 @@
-// Copyright 2018 the Xilem Authors and the Druid Authors
-// SPDX-License-Identifier: Apache-2.0
 
-use masonry::{Widget, WidgetState};
+use masonry::core::{FromDynWidget, Widget};
+use masonry::kurbo::Affine;
 
-/// This is a wrapper to allow for implementing WidgetMut on this foreign crate.
-/// You need the WrapWidgetMut trait to do the conversion within the View::rebuild method.
-/// 
 // TODO - Document extension trait workaround.
 // See https://xi.zulipchat.com/#narrow/stream/317477-masonry/topic/Thoughts.20on.20simplifying.20WidgetMut/near/436478885
-/// A mutable reference to a [`Widget`].
+/// A rich mutable reference to a [`Widget`].
 ///
 /// In Masonry, widgets can't be mutated directly. All mutations go through a `WidgetMut`
 /// wrapper. So, to change a label's text, you might call `WidgetMut<Label>::set_text()`.
@@ -16,7 +12,7 @@ use masonry::{Widget, WidgetState};
 /// change.
 ///
 /// You can create a `WidgetMut` from [`TestHarness`](crate::testing::TestHarness),
-/// [`EventCtx`](crate::EventCtx), [`LifeCycleCtx`](crate::LifeCycleCtx) or from a parent
+/// [`EventCtx`](crate::core::EventCtx), [`UpdateCtx`](crate::core::UpdateCtx) or from a parent
 /// `WidgetMut` with [`MutateCtx`].
 ///
 /// `WidgetMut` implements [`Deref`](std::ops::Deref) with `W::Mut` as target.
@@ -25,8 +21,8 @@ use masonry::{Widget, WidgetState};
 ///
 /// Once the Receiver trait is stabilized, `WidgetMut` will implement it so that custom
 /// widgets in downstream crates can use `WidgetMut` as the receiver for inherent methods.
-pub struct WidgetMut<'a, W: Widget> {
-    pub masonry_mut: masonry::widget::WidgetMut<'a, W>
+pub struct WidgetMut<'a, W: Widget + ?Sized> {
+    pub masonry_mut: masonry::core::WidgetMut<'a, W>
 }
 
 /// Convert masonry's WidgetMut into jihaz's.
@@ -35,7 +31,7 @@ pub trait WrapWidgetMut<'a, W: Widget> {
     fn wrap(self) -> WidgetMut<'a, W>;
 }
 
-impl<'a, W: Widget> WrapWidgetMut<'a, W> for masonry::widget::WidgetMut<'a, W> {
+impl<'a, W: Widget> WrapWidgetMut<'a, W> for masonry::core::WidgetMut<'a, W> {
     fn wrap(self) -> WidgetMut<'a, W> {
         WidgetMut { masonry_mut: self }
     }
@@ -53,16 +49,13 @@ impl<'a, W: Widget> WrapWidgetMut<'a, W> for masonry::widget::WidgetMut<'a, W> {
 //     }
 // }
 
-impl<'w, W: Widget> WidgetMut<'w, W> {
-    pub fn unwrap(self) -> masonry::widget::WidgetMut<'w, W> {
+impl<'a, W: Widget> WidgetMut<'a, W> {
+    pub fn unwrap(self) -> masonry::core::WidgetMut<'a, W> {
         self.masonry_mut
     }
+}
 
-    // TODO - Replace with individual methods from WidgetState
-    /// Get the [`WidgetState`] of the current widget.
-    pub fn state(&self) -> &WidgetState {
-        self.masonry_mut.state()
-    }
+impl<W: Widget + ?Sized> WidgetMut<'_, W> {
 
     /// Get a `WidgetMut` for the same underlying widget with a shorter lifetime.
     pub fn reborrow_mut(&mut self) -> WidgetMut<'_, W> {
@@ -70,16 +63,23 @@ impl<'w, W: Widget> WidgetMut<'w, W> {
             masonry_mut: self.masonry_mut.reborrow_mut(),
         }
     }
-}
 
-impl<'a> WidgetMut<'a, Box<dyn Widget>> {
+    /// Set the local transform of this widget.
+    ///
+    /// It behaves similarly as CSS transforms.
+    pub fn set_transform(&mut self, transform: Affine) {
+        self.masonry_mut.ctx.set_transform(transform);
+    }
+
     /// Attempt to downcast to `WidgetMut` of concrete Widget type.
-    pub fn try_downcast<W2: Widget>(&mut self) -> Option<WidgetMut<'_, W2>> {
-        self.masonry_mut.try_downcast().map(|masonry_mut| {
-            WidgetMut {
-                masonry_mut
-            }
-        })
+    pub fn try_downcast<W2: Widget + FromDynWidget + ?Sized>(
+        &mut self,
+    ) -> Option<WidgetMut<'_, W2>> {
+        self.masonry_mut
+            .try_downcast()
+            .map(|masonry_mut| {
+                WidgetMut { masonry_mut }
+            })
     }
 
     /// Downcasts to `WidgetMut` of concrete Widget type.
@@ -88,9 +88,9 @@ impl<'a> WidgetMut<'a, Box<dyn Widget>> {
     ///
     /// Panics if the downcast fails, with an error message that shows the
     /// discrepancy between the expected and actual types.
-    pub fn downcast<W2: Widget>(&mut self) -> WidgetMut<'_, W2> {
+    pub fn downcast<W2: Widget + FromDynWidget + ?Sized>(&mut self) -> WidgetMut<'_, W2> {
         WidgetMut {
-            masonry_mut: self.masonry_mut.downcast(),
+            masonry_mut: self.masonry_mut.downcast() 
         }
     }
 }

@@ -1,7 +1,6 @@
 // Copyright 2024 the Xilem Authors
 // SPDX-License-Identifier: Apache-2.0
 
-use masonry::text::TextBrush;
 use xilem_core::{Mut, View, ViewMarker};
 
 use xilem::{Color, Pod, TextAlignment, ViewCtx};
@@ -67,26 +66,26 @@ impl<State, Action> Textbox<State, Action> {
 
 impl<State, Action> ViewMarker for Textbox<State, Action> {}
 impl<State: 'static, Action: 'static> View<State, Action, ViewCtx> for Textbox<State, Action> {
-    type Element = Pod<widget::Textbox>;
+    type Element = Pod<masonry::widgets::Textbox>;
     type ViewState = ();
 
     fn build(&self, ctx: &mut ViewCtx) -> (Self::Element, Self::ViewState) {
         ctx.with_leaf_action_widget(|ctx| {
             ctx.new_pod(
-                widget::Textbox::new(self.contents.clone())
+                masonry::widgets::Textbox::new(self.contents.clone())
                     .with_text_brush(self.text_brush.clone())
                     .with_text_alignment(self.alignment),
             )
         })
     }
 
-    fn rebuild<'el>(
+    fn rebuild(
         &self,
         prev: &Self,
         _: &mut Self::ViewState,
         ctx: &mut ViewCtx,
-        element: Mut<'el, Self::Element>,
-    ) -> Mut<'el, Self::Element> {
+        element: Mut<Self::Element>,
+    ){
         let mut element = element.wrap();
         // Unlike the other properties, we don't compare to the previous value;
         // instead, we compare directly to the element's text. This is to handle

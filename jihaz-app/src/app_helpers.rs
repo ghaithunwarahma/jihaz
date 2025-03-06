@@ -1,5 +1,5 @@
 use std::{any::Any, sync::Arc};
-use masonry::{widget::WidgetMut, Widget, WidgetPod};
+use masonry::core::{Widget, WidgetMut, WidgetPod};
 use xilem::Pod;
 use xilem_core::MessageResult;
 use crate::app_message::AppMessageResult;

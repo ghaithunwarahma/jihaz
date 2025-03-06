@@ -1,42 +1,34 @@
 use std::path::PathBuf;
+use jihaz::collection::SmallKeyArray;
 use jihaz_deferred::message::DeferredTaskMessage;
-use masonry::Action;
 use tokio::task::JoinHandle;
 use xilem::{
-    view::{label, Label}, Pod, ViewCtx
+    view::{button, label, textbox, Button, Label, PointerButton, Textbox}, Pod, ViewCtx
 };
-use xilem_core::{AsyncCtx, MessageProxy, MessageResult, Mut, View, ViewId, ViewMarker, ViewPathTracker};
+use xilem_core::{
+    AsyncCtx, MessageProxy, MessageResult, Mut, 
+    View, ViewId, ViewMarker, ViewPathTracker
+};
 use crate::{
-    app::AppState, 
+    app::AppState, app_message::AppMessageResult, 
     deferred::{generate_packages, GeneratePackagesTaskPayload}, 
-    app_message::AppMessageResult, 
-    progress::ProgressMessage, 
-    widget::tablet::TabletWi
+    progress::ProgressMessage, widget::{self, tablet::TabletChild}
 };
-use super::{button_action::{button, ButtonOfAction}, textbox::{textbox, Textbox}};
 
-pub struct TabletVi {
-    pub executable_path_label: Label,
-    pub executable_path_textbox: Textbox<AppState, AppMessageResult>,
-    pub original_icon_path_label: Label,
-    pub original_icon_path_textbox: Textbox<AppState, AppMessageResult>,
-    pub target_packages_directory_path_label: Label,
-    pub target_packages_directory_path_textbox: Textbox<AppState, AppMessageResult>,
-    pub app_name_label: Label,
-    pub app_name_textbox: Textbox<AppState, AppMessageResult>,
-    // pub generate_app_packages_button: SpecialButton,
-    pub generate_app_packages_button: ButtonOfAction<AppState, AppMessageResult>,
-    pub progress_message_label: Label,
+pub struct Tablet<F> {
+    pub labels: SmallKeyArray<TabletChild, Label, 5>,
+    pub textboxes: SmallKeyArray<TabletChild, Textbox<AppState, AppMessageResult>, 4>,
+    pub buttons: SmallKeyArray<TabletChild, Button<F>, 1>,
 }
 
 /// The ViewState is retained, unlike View where a new instance is created
 /// whenever app_logic is ran.
-pub struct TabletViState {
+pub struct TabletState {
     async_task_payload: Option<GeneratePackagesTaskPayload>,
     async_handle: Option<JoinHandle<()>>,
 }
 
-impl TabletViState {
+impl TabletState {
     fn should_run_task(&self) -> bool {
         let lazy = || self.no_running_task();
         self.async_task_payload.is_some() && lazy()
@@ -56,107 +48,134 @@ impl TabletViState {
     }
 }
 
-// When the state changes, xilem automatically calls rebuild
-impl TabletVi {
-    pub fn new(
-        executable_path: String,
-        original_icon_path: String,
-        target_packages_directory_path: String,
-        app_name: String,
-        progress_message: &ProgressMessage,
-    ) -> TabletVi {
-        TabletVi {
-            executable_path_label: label("Path to app executable:"),
-            executable_path_textbox: textbox(executable_path, |app_state: &mut AppState, s| {
+pub fn tablet(
+    executable_path: String,
+    original_icon_path: String,
+    target_packages_directory_path: String,
+    app_name: String,
+    progress_message: &ProgressMessage,
+) -> Tablet<impl for<'a> Fn(&'a mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + 'static> {
+    use TabletChild as TC;
+    Tablet {
+        labels: SmallKeyArray::new([
+            (TC::ExecutablePath, label("Path to app executable:")),
+            (TC::OriginalIconPath, label("Path to original icon file:")),
+            (TC::TargetPckgsDirPath, label("Path to the directory to place the generated app packages:")),
+            (TC::AppName, label("Name of the app in small letters")),
+            (TC::ProgressMessage, label(progress_message.to_string())),
+        ]),
+        textboxes: SmallKeyArray::new([
+            (TC::ExecutablePath, textbox(executable_path, |app_state: &mut AppState, s| {
                 app_state.executable_path = PathBuf::from(s).into();
                 AppMessageResult::Nop
-            }),
-            original_icon_path_label: label("Path to original icon file:"),
-            original_icon_path_textbox: textbox(original_icon_path, |app_state: &mut AppState, s| {
+            })),
+            (TC::OriginalIconPath, textbox(original_icon_path, |app_state: &mut AppState, s| {
                 app_state.original_icon_path = PathBuf::from(s).into();
                 AppMessageResult::Nop
-            }),
-            target_packages_directory_path_label: label("Path to the directory to place the generated app packages:"),
-            target_packages_directory_path_textbox: textbox(target_packages_directory_path, |app_state: &mut AppState, s| {
+            })),
+            (TC::TargetPckgsDirPath, textbox(target_packages_directory_path, |app_state: &mut AppState, s| {
                 app_state.target_packages_directory_path = PathBuf::from(s).into();
                 AppMessageResult::Nop
-            }),
-            app_name_label: label("Name of the app in small letters"),
-            app_name_textbox: textbox(app_name, |app_state: &mut AppState, s| {
+            })),
+            (TC::AppName, textbox(app_name, |app_state: &mut AppState, s| {
                 app_state.app_name_lowercase = s;
                 AppMessageResult::Nop
-            }),
-            generate_app_packages_button: 
-            button("Generate app packages", |_app_state: &mut AppState| {
+            })),
+        ]),
+        buttons: SmallKeyArray::new([
+            (TC::GenerateAppPckgs, button("Generate app packages", |_app_state: &mut AppState| {
                 AppMessageResult::GeneratePackages
-            }),
-            progress_message_label: label(progress_message.to_string()),
-        }
+            }))
+        ]),
     }
 }
-impl ViewMarker for TabletVi {}
-impl View<AppState, AppMessageResult, ViewCtx> for TabletVi {
-    type Element = Pod<TabletWi>;
-    type ViewState = TabletViState;
+
+// --- MARK: TYPES TO REDUCE DUPLICATION ---
+type TabletVS<F> = <Tablet<F> as View<AppState, AppMessageResult, ViewCtx>>::ViewState;
+type TabletEl<F> = <Tablet<F> as View<AppState, AppMessageResult, ViewCtx>>::Element;
+
+impl<F> ViewMarker for Tablet<F> {}
+
+impl<F> View<AppState, AppMessageResult, ViewCtx> for Tablet<F> 
+where
+    F: Fn(&mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + Sync + 'static,
+{
+    type Element = Pod<widget::Tablet>;
+    type ViewState = TabletState;
 
     fn build(&self, ctx: &mut ViewCtx) -> (Self::Element, Self::ViewState) {
-        let (exec_path_lbl, _) = ctx.with_id(ViewId::new(1), |ctx| View::<AppState, (), ViewCtx>::build(&self.executable_path_label, ctx));
-        let (exec_path_tb, _) = ctx.with_id(ViewId::new(2), |ctx| View::<AppState, AppMessageResult, ViewCtx>::build(&self.executable_path_textbox, ctx));
-        let (og_ic_path_lbl, _) = ctx.with_id(ViewId::new(3), |ctx| View::<AppState, (), ViewCtx>::build(&self.original_icon_path_label, ctx));
-        let (og_ic_path_tb, _) = ctx.with_id(ViewId::new(4), |ctx| View::<AppState, AppMessageResult, ViewCtx>::build(&self.original_icon_path_textbox, ctx));
-        let (tg_pck_dir_path_lbl, _) = ctx.with_id(ViewId::new(5), |ctx| View::<AppState, (), ViewCtx>::build(&self.target_packages_directory_path_label, ctx));
-        let (tg_pck_dir_path_tb, _) = ctx.with_id(ViewId::new(6), |ctx| View::<AppState, AppMessageResult, ViewCtx>::build(&self.target_packages_directory_path_textbox, ctx));
-        let (app_name_lbl, _) = ctx.with_id(ViewId::new(7), |ctx| View::<AppState, (), ViewCtx>::build(&self.app_name_label, ctx));
-        let (app_name_tb, _) = ctx.with_id(ViewId::new(8), |ctx| View::<AppState, AppMessageResult, ViewCtx>::build(&self.app_name_textbox, ctx));
-        let (gen_app_pck_btn, _) = ctx.with_id(ViewId::new(9), |ctx| View::<AppState, AppMessageResult, ViewCtx>::build(&self.generate_app_packages_button, ctx));
-        let (progress_msg_lbl, _) = ctx.with_id(ViewId::new(7), |ctx| View::<AppState, (), ViewCtx>::build(&self.progress_message_label, ctx));
-        
+        use TabletChild as TC;
+
+        let labels = SmallKeyArray::new([
+            (TC::ExecutablePath, ctx.with_id(ViewId::new(1), |ctx| <Label as View<AppState, (), ViewCtx>>::build(&self.labels.get(&TC::ExecutablePath), ctx).0.into_widget_pod())),
+            (TC::OriginalIconPath, ctx.with_id(ViewId::new(2), |ctx| <Label as View<AppState, (), ViewCtx>>::build(&self.labels.get(&TC::OriginalIconPath), ctx).0.into_widget_pod())),
+            (TC::TargetPckgsDirPath, ctx.with_id(ViewId::new(3), |ctx| <Label as View<AppState, (), ViewCtx>>::build(&self.labels.get(&TC::TargetPckgsDirPath), ctx).0.into_widget_pod())),
+            (TC::AppName, ctx.with_id(ViewId::new(4), |ctx| <Label as View<AppState, (), ViewCtx>>::build(&self.labels.get(&TC::AppName), ctx).0.into_widget_pod())),
+            (TC::ProgressMessage, ctx.with_id(ViewId::new(5), |ctx| <Label as View<AppState, (), ViewCtx>>::build(&self.labels.get(&TC::ProgressMessage), ctx).0.into_widget_pod())),
+        ]);
+        let textboxes = SmallKeyArray::new([
+            (TC::ExecutablePath, ctx.with_id(ViewId::new(6), |ctx| self.textboxes.get(&TC::ExecutablePath).build(ctx).0.into_widget_pod())),
+            (TC::OriginalIconPath, ctx.with_id(ViewId::new(7), |ctx| self.textboxes.get(&TC::OriginalIconPath).build(ctx).0.into_widget_pod())),
+            (TC::TargetPckgsDirPath, ctx.with_id(ViewId::new(8), |ctx| self.textboxes.get(&TC::TargetPckgsDirPath).build(ctx).0.into_widget_pod())),
+            (TC::AppName, ctx.with_id(ViewId::new(9), |ctx| self.textboxes.get(&TC::AppName).build(ctx).0.into_widget_pod())),
+        ]);
+        let buttons = SmallKeyArray::new([
+            (TC::GenerateAppPckgs, ctx.with_id(ViewId::new(10), |ctx| self.buttons.get(&TC::GenerateAppPckgs).build(ctx).0.into_widget_pod()))
+        ]);
         let element = ctx.with_action_widget(|ctx: &mut ViewCtx| {
-            ctx.new_pod(TabletWi::new(
-                exec_path_lbl,
-                exec_path_tb,
-                og_ic_path_lbl,
-                og_ic_path_tb,
-                tg_pck_dir_path_lbl,
-                tg_pck_dir_path_tb,
-                app_name_lbl,
-                app_name_tb,
-                gen_app_pck_btn,
-                progress_msg_lbl,
+            ctx.new_pod(widget::Tablet::new(
+                labels,
+                textboxes,
+                buttons,
             ))
         });
-        let view_state = TabletViState { async_task_payload: None, async_handle: None };
+        let view_state = TabletState { async_task_payload: None, async_handle: None };
         (element, view_state)
     }
 
-    fn rebuild<'el>(
+    fn rebuild(
         &self,
         prev: &Self,
         view_state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
-        mut element: Mut<'el, Self::Element>,
-    ) -> Mut<'el, Self::Element> {
-        let child_element = element.ctx.get_mut(&mut element.widget.executable_path_label.inner);
-        ctx.with_id(ViewId::new(1), |ctx| View::<AppState, (), ViewCtx>::rebuild(&self.executable_path_label, &prev.executable_path_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.executable_path_textbox.inner);
-        ctx.with_id(ViewId::new(2), |ctx| View::<AppState, AppMessageResult, ViewCtx>::rebuild(&self.executable_path_textbox, &prev.executable_path_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.original_icon_path_label.inner);
-        ctx.with_id(ViewId::new(3), |ctx| View::<AppState, (), ViewCtx>::rebuild(&self.original_icon_path_label, &prev.original_icon_path_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.original_icon_path_textbox.inner);
-        ctx.with_id(ViewId::new(4), |ctx| View::<AppState, AppMessageResult, ViewCtx>::rebuild(&self.original_icon_path_textbox, &prev.original_icon_path_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.target_packages_directory_path_label.inner);
-        ctx.with_id(ViewId::new(5), |ctx| View::<AppState, (), ViewCtx>::rebuild(&self.target_packages_directory_path_label, &prev.target_packages_directory_path_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.target_packages_directory_path_textbox.inner);
-        ctx.with_id(ViewId::new(6), |ctx| View::<AppState, AppMessageResult, ViewCtx>::rebuild(&self.target_packages_directory_path_textbox, &prev.target_packages_directory_path_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.app_name_label.inner);
-        ctx.with_id(ViewId::new(7), |ctx| View::<AppState, (), ViewCtx>::rebuild(&self.app_name_label, &prev.app_name_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.app_name_textbox.inner);
-        ctx.with_id(ViewId::new(8), |ctx| View::<AppState, AppMessageResult, ViewCtx>::rebuild(&self.app_name_textbox, &prev.app_name_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.generate_app_packages_button.inner);
-        ctx.with_id(ViewId::new(9), |ctx| View::<AppState, AppMessageResult, ViewCtx>::rebuild(&self.generate_app_packages_button, &prev.generate_app_packages_button, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.progress_message_label.inner);
-        ctx.with_id(ViewId::new(9), |ctx| View::<AppState, AppMessageResult, ViewCtx>::rebuild(&self.progress_message_label, &prev.progress_message_label, &mut (), ctx, child_element));
+        mut element: Mut<Self::Element>,
+    ) {
+        use TabletChild as TC;
 
+        fn rebuild_label<F>(ref key: TabletChild, id: u64, this: &Tablet<F>, prev: &Tablet<F>, _view_state: &mut TabletVS<F>, ctx: &mut ViewCtx, element: &mut Mut<TabletEl<F>>) 
+        where
+            F: Fn(&mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + Sync + 'static,
+        {
+            ctx.with_id(ViewId::new(id), |ctx| {
+                let child_element = widget::Tablet::label_mut(key, element);
+                <Label as View<AppState, (), ViewCtx>>::rebuild(this.labels.get(key), prev.labels.get(key), &mut (), ctx, child_element)
+            });
+        }
+        rebuild_label(TC::ExecutablePath, 1, self, prev, view_state, ctx, &mut element);
+        rebuild_label(TC::OriginalIconPath, 2, self, prev, view_state, ctx, &mut element);
+        rebuild_label(TC::TargetPckgsDirPath, 3, self, prev, view_state, ctx, &mut element);
+        rebuild_label(TC::AppName, 4, self, prev, view_state, ctx, &mut element);
+        rebuild_label(TC::ProgressMessage, 5, self, prev, view_state, ctx, &mut element);
+
+        fn rebuild_textbox<F>(ref key: TabletChild, id: u64, this: &Tablet<F>, prev: &Tablet<F>, _view_state: &mut TabletVS<F>, ctx: &mut ViewCtx, element: &mut Mut<TabletEl<F>>) 
+        where
+            F: Fn(&mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + Sync + 'static,
+        {
+            ctx.with_id(ViewId::new(id), |ctx| {
+                let child_element = widget::Tablet::textbox_mut(key, element);
+                this.textboxes.get(key).rebuild(prev.textboxes.get(key), &mut (), ctx, child_element)
+            });
+        }
+        rebuild_textbox(TC::ExecutablePath, 6, self, prev, view_state, ctx, &mut element);
+        rebuild_textbox(TC::OriginalIconPath, 7, self, prev, view_state, ctx, &mut element);
+        rebuild_textbox(TC::TargetPckgsDirPath, 8, self, prev, view_state, ctx, &mut element);
+        rebuild_textbox(TC::AppName, 9, self, prev, view_state, ctx, &mut element);
+
+        ctx.with_id(ViewId::new(10), |ctx| {
+            let child_element = widget::Tablet::button_mut(&TC::GenerateAppPckgs, &mut element);
+            self.buttons.get(&TC::GenerateAppPckgs).rebuild(prev.buttons.get(&TC::GenerateAppPckgs), &mut (), ctx, child_element)
+        });
+        
         if view_state.should_run_task() {
 
             let payload = view_state.async_task_payload.take().unwrap();
@@ -175,37 +194,49 @@ impl View<AppState, AppMessageResult, ViewCtx> for TabletVi {
                 println!("/ < * > < * > / should not run task now, there's a task that's still running.. ");
             }
         }
-
-        element
     }
 
     fn teardown(
         &self,
         _view_state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
-        mut element: Mut<'_, Self::Element>,
+        mut element: Mut<Self::Element>,
     ) {
-        let child_element = element.ctx.get_mut(&mut element.widget.executable_path_label.inner);
-        // ctx.with_id(ViewId::new(1), |ctx| self.executable_path_label.teardown(&mut (), ctx, child_element));
-        ctx.with_id(ViewId::new(1), |ctx| View::<AppState, (), ViewCtx>::teardown(&self.executable_path_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.executable_path_textbox.inner);
-        ctx.with_id(ViewId::new(2), |ctx| View::<AppState, AppMessageResult, ViewCtx>::teardown(&self.executable_path_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.original_icon_path_label.inner);
-        ctx.with_id(ViewId::new(3), |ctx| View::<AppState, (), ViewCtx>::teardown(&self.original_icon_path_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.original_icon_path_textbox.inner);
-        ctx.with_id(ViewId::new(4), |ctx| View::<AppState, AppMessageResult, ViewCtx>::teardown(&self.original_icon_path_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.target_packages_directory_path_label.inner);
-        ctx.with_id(ViewId::new(5), |ctx| View::<AppState, (), ViewCtx>::teardown(&self.target_packages_directory_path_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.target_packages_directory_path_textbox.inner);
-        ctx.with_id(ViewId::new(6), |ctx| View::<AppState, AppMessageResult, ViewCtx>::teardown(&self.target_packages_directory_path_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.app_name_label.inner);
-        ctx.with_id(ViewId::new(7), |ctx| View::<AppState, (), ViewCtx>::teardown(&self.app_name_label, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.app_name_textbox.inner);
-        ctx.with_id(ViewId::new(8), |ctx| View::<AppState, AppMessageResult, ViewCtx>::teardown(&self.app_name_textbox, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.generate_app_packages_button.inner);
-        ctx.with_id(ViewId::new(9), |ctx| View::<AppState, AppMessageResult, ViewCtx>::teardown(&self.generate_app_packages_button, &mut (), ctx, child_element));
-        let child_element = element.ctx.get_mut(&mut element.widget.progress_message_label.inner);
-        ctx.with_id(ViewId::new(9), |ctx| View::<AppState, AppMessageResult, ViewCtx>::teardown(&self.progress_message_label, &mut (), ctx, child_element));
+        use TabletChild as TC;
+
+        fn teardown_label<F>(ref key: TabletChild, id: u64, this: &Tablet<F>, _view_state: &mut TabletVS<F>, ctx: &mut ViewCtx, element: &mut Mut<TabletEl<F>>) 
+        where
+            F: Fn(&mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + Sync + 'static,
+        {
+            ctx.with_id(ViewId::new(id), |ctx| {
+                let child_element = widget::Tablet::label_mut(key, element);
+                <Label as View<AppState, (), ViewCtx>>::teardown(this.labels.get(key), &mut (), ctx, child_element)
+            });
+        }
+        teardown_label(TC::ExecutablePath, 1, self, _view_state, ctx, &mut element);
+        teardown_label(TC::OriginalIconPath, 2, self, _view_state, ctx, &mut element);
+        teardown_label(TC::TargetPckgsDirPath, 3, self, _view_state, ctx, &mut element);
+        teardown_label(TC::AppName, 4, self, _view_state, ctx, &mut element);
+        teardown_label(TC::ProgressMessage, 5, self, _view_state, ctx, &mut element);
+
+        fn teardown_textbox<F>(ref key: TabletChild, id: u64, this: &Tablet<F>, _view_state: &mut TabletVS<F>, ctx: &mut ViewCtx, element: &mut Mut<TabletEl<F>>) 
+        where
+            F: Fn(&mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + Sync + 'static,
+        {
+            ctx.with_id(ViewId::new(id), |ctx| {
+                let child_element = widget::Tablet::textbox_mut(key, element);
+                this.textboxes.get(key).teardown(&mut (), ctx, child_element)
+            });
+        }
+        teardown_textbox(TC::ExecutablePath, 6, self, _view_state, ctx, &mut element);
+        teardown_textbox(TC::OriginalIconPath, 7, self, _view_state, ctx, &mut element);
+        teardown_textbox(TC::TargetPckgsDirPath, 8, self, _view_state, ctx, &mut element);
+        teardown_textbox(TC::AppName, 9, self, _view_state, ctx, &mut element);
+
+        ctx.with_id(ViewId::new(10), |ctx| {
+            let child_element = widget::Tablet::button_mut(&TC::GenerateAppPckgs, &mut element);
+            self.buttons.get(&TC::GenerateAppPckgs).teardown(&mut (), ctx, child_element)
+        });
     }
 
     fn message(
@@ -239,44 +270,7 @@ impl View<AppState, AppMessageResult, ViewCtx> for TabletVi {
                     message = other_message;
                 }
             }
-            match message.downcast::<Action>() {
-                Ok(action) => {
-                    if let Action::Other(other) = action.as_ref() {
-                        if let Some(_app_message) = other.downcast_ref::<AppMessageResult>() {
-                            // if let AppMessageResult::NextProgressMessage = app_message {
-                            //     println!("continued stream");
-                            //     if let Some(next_message) = progres_stream.next_message() {
-                            //         // set the current progress message, this app state change will trigger a rebuild pass.
-                            //         app_state.progress_message.set(next_message);
-                            //         if progres_stream.has_messages() {
-                            //             // feed back the remaining progres stream to the next message pass once
-                            //             // the current message is set via View::rebuild and shown to the user.
-                            //             MessageResult::Action(AppMessageResult::ShowProgressMessages(progres_stream.clone()))
-                            //         } else {
-                            //             MessageResult::RequestRebuild
-                            //         }
-                            //     } else {
-                            //         MessageResult::Nop
-                            //     }
-                            // } else {
-                                tracing::error!("Wrong AppMessageResult type found in TabletVi::message");
-                                MessageResult::Stale(action)
-                            // }
-                        } else {
-                            tracing::error!("Wrong Action::Other type in TabletVi::message");
-                            MessageResult::Stale(action)
-                        }
-                    } else {
-                        tracing::error!("Wrong Action variant in TabletVi::message");
-                        MessageResult::Stale(action)
-                    }
-                }
-                
-                Err(message) => {
-                    tracing::error!("Wrong message type in TabletVi::message");
-                    MessageResult::Stale(message)
-                }
-            }
+            MessageResult::Stale(message)
         } else {
             // println!("with id in stream");
             
@@ -284,17 +278,19 @@ impl View<AppState, AppMessageResult, ViewCtx> for TabletVi {
                 .split_first()
                 .expect("Id path has elements for vector");
 
+            use TabletChild as TC;
+
             let message_result = match start.routing_id() {
-                1 => self.executable_path_label.message(&mut (), rest, message, app_state),
-                2 => self.executable_path_textbox.message(&mut (), rest, message, app_state),
-                3 => self.original_icon_path_label.message(&mut (), rest, message, app_state),
-                4 => self.original_icon_path_textbox.message(&mut (), rest, message, app_state),
-                5 => self.target_packages_directory_path_label.message(&mut (), rest, message, app_state),
-                6 => self.target_packages_directory_path_textbox.message(&mut (), rest, message, app_state),
-                7 => self.app_name_label.message(&mut (), rest, message, app_state),
-                8 => self.app_name_textbox.message(&mut (), rest, message, app_state),
-                9 => self.generate_app_packages_button.message(&mut (), rest, message, app_state),
-                10 => self.progress_message_label.message(&mut (), rest, message, app_state),
+                1 => self.labels.get(&TC::ExecutablePath).message(&mut (), rest, message, app_state),
+                2 => self.labels.get(&TC::OriginalIconPath).message(&mut (), rest, message, app_state),
+                3 => self.labels.get(&TC::TargetPckgsDirPath).message(&mut (), rest, message, app_state),
+                4 => self.labels.get(&TC::AppName).message(&mut (), rest, message, app_state),
+                5 => self.labels.get(&TC::ProgressMessage).message(&mut (), rest, message, app_state),
+                6 => self.textboxes.get(&TC::ExecutablePath).message(&mut (), rest, message, app_state),
+                7 => self.textboxes.get(&TC::OriginalIconPath).message(&mut (), rest, message, app_state),
+                8 => self.textboxes.get(&TC::TargetPckgsDirPath).message(&mut (), rest, message, app_state),
+                9 => self.textboxes.get(&TC::AppName).message(&mut (), rest, message, app_state),
+                10 => self.buttons.get(&TC::GenerateAppPckgs).message(&mut (), rest, message, app_state),
                 _ => unreachable!(),
             };
             match message_result {

@@ -1,14 +1,14 @@
-use xilem::{Pod, ViewCtx};
+use xilem::{view::PointerButton, Pod, ViewCtx};
 use xilem_core::{MessageResult, Mut, View, ViewId, ViewMarker};
 use crate::{
-    app::AppState, widget::window::WindowWi, app_helpers::EmptyMessageResult
+    app::AppState, app_helpers::EmptyMessageResult, app_message::AppMessageResult, widget
 };
 
-use super::tablet::{TabletVi, TabletViState};
+use super::tablet::{Tablet, TabletState};
 
-/// Represents the viewed spread of body or a page of the Quran
-pub struct WindowVi {
-    pub tablet: TabletVi,
+/// Represents the viewed spread of body
+pub struct Window<F> {
+    pub tablet: Tablet<F>,
 }
 
 /// The ViewState is retained, unlike View, in which a new instance is created
@@ -19,13 +19,27 @@ pub struct WindowVi {
 /// done in the message method and not in the rebuild method.
 /// 
 /// Also either I 
-pub struct WindowViState {
-    pub tablet: TabletViState,
+pub struct WindowState {
+    pub tablet: TabletState,
 }
-impl ViewMarker for WindowVi {}
-impl View<AppState, (), ViewCtx> for WindowVi {
-    type Element = Pod<WindowWi>;
-    type ViewState = WindowViState;
+
+// When the state changes, xilem automatically calls rebuild
+impl<F> Window<F> {
+    pub fn new(tablet: Tablet<F>) -> Window<F> {
+        Window {
+            tablet,
+        }
+    }
+}
+
+impl<F> ViewMarker for Window<F> {}
+
+impl<F> View<AppState, (), ViewCtx> for Window<F>
+where
+    F: Fn(&mut AppState, PointerButton) -> MessageResult<AppMessageResult> + Send + Sync + 'static,
+{
+    type Element = Pod<widget::Window>;
+    type ViewState = WindowState;
 
     fn build(&self, ctx: &mut ViewCtx) -> (Self::Element, Self::ViewState) {
         // println!(" @@@ ±±± @@@ called build");
@@ -34,22 +48,21 @@ impl View<AppState, (), ViewCtx> for WindowVi {
         let (child_element, child_state) = self.tablet.build(ctx);
 
         let element = ctx.with_action_widget(|ctx| {
-            ctx.new_pod(WindowWi::new(child_element))
+            ctx.new_pod(widget::Window::new(child_element.into_widget_pod()))
         });
-        let state = WindowViState { tablet: child_state };
+        let state = WindowState { tablet: child_state };
         (element, state)
     }
     
-    fn rebuild<'el>(
+    fn rebuild(
         &self,
         prev: &Self,
         view_state: &mut Self::ViewState,
         ctx: &mut ViewCtx,
-        mut element: Mut<'el, Self::Element>,
-    ) -> Mut<'el, Self::Element> {
-        let child_element = element.ctx.get_mut(&mut element.widget.tablet.inner);
+        mut element: Mut<Self::Element>,
+    ) {
+        let child_element = widget::Window::child_mut(&mut element);
         self.tablet.rebuild(&prev.tablet, &mut view_state.tablet, ctx, child_element);
-        element
     }
 
     fn teardown(
@@ -58,7 +71,7 @@ impl View<AppState, (), ViewCtx> for WindowVi {
         ctx: &mut ViewCtx,
         mut element: xilem_core::Mut<'_, Self::Element>,
     ) {
-        let child_element = element.ctx.get_mut(&mut element.widget.tablet.inner);
+        let child_element = widget::Window::child_mut(&mut element);
         self.tablet.teardown(&mut view_state.tablet, ctx, child_element);
     }
 
@@ -72,14 +85,5 @@ impl View<AppState, (), ViewCtx> for WindowVi {
         self.tablet
             .message(&mut view_state.tablet, id_path, message, app_state)
             .empty()
-    }
-}
-
-// When the state changes, xilem automatically calls rebuild
-impl WindowVi {
-    pub fn new(tablet: TabletVi) -> WindowVi {
-        WindowVi {
-            tablet,
-        }
     }
 }

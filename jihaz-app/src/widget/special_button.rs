@@ -6,19 +6,18 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use accesskit::{DefaultActionVerb, Role};
-use masonry::text::TextStorage;
-use smallvec::{smallvec, SmallVec};
-use tracing::{trace, trace_span, Span};
+use accesskit::{Node, Role};
+use smallvec::{SmallVec, smallvec};
+use tracing::{Span, trace, trace_span};
 
-use masonry::{Action, PointerButton, WidgetId};
-use masonry::paint_scene_helpers::{fill_lin_gradient, stroke, UnitPoint};
-use masonry::widget::{Label, WidgetPod};
-use masonry::{
-    theme, AccessCtx, AccessEvent, ArcStr, BoxConstraints, EventCtx, Insets, LayoutCtx, LifeCycle,
-    LifeCycleCtx, PaintCtx, PointerEvent, Size, StatusChange, TextEvent, Widget,
-    vello::Scene,
+use masonry::core::{
+    AccessCtx, AccessEvent, Action, ArcStr, BoxConstraints, EventCtx, LayoutCtx, PaintCtx, PointerButton, PointerEvent, QueryCtx, TextEvent, Update, UpdateCtx, Widget, WidgetId, WidgetMut, WidgetPod
 };
+use masonry::kurbo::{Insets, Size};
+use masonry::theme;
+use masonry::util::{UnitPoint, fill_lin_gradient, stroke};
+use masonry::vello::Scene;
+use masonry::widgets::Label;
 
 use crate::app_helpers::ActionData;
 
@@ -114,79 +113,83 @@ impl SpecialButton {
     }
 }
 
-// can't do this yet as Receiver trait is not yet stabilized
-// // --- MARK: WIDGETMUT ---
-// impl WidgetMut<'_, Button> {
-//     /// Set the text.
-//     pub fn set_text(&mut self, new_text: impl Into<ArcStr>) {
-//         self.label_mut().set_text(new_text);
-//     }
+// --- MARK: WIDGETMUT ---
+impl SpecialButton {
+    /// Set the text.
+    pub fn set_text(this: &mut WidgetMut<'_, Self>, new_text: impl Into<ArcStr>) {
+        Label::set_text(&mut Self::label_mut(this), new_text);
+    }
 
-//     pub fn label_mut(&mut self) -> WidgetMut<'_, Label> {
-//         self.ctx.get_mut(&mut self.widget.label)
-//     }
-// }
+    pub fn label_mut<'t>(this: &'t mut WidgetMut<'_, Self>) -> WidgetMut<'t, Label> {
+        this.ctx.get_mut(&mut this.widget.label)
+    }
+}
 
 // --- MARK: IMPL WIDGET ---
 impl Widget for SpecialButton {
     fn on_pointer_event(&mut self, ctx: &mut EventCtx, event: &PointerEvent) {
-        match event {
+         match event {
             PointerEvent::PointerDown(_, _) => {
                 if !ctx.is_disabled() {
-                    ctx.set_active(true);
-                    ctx.request_paint();
+                    ctx.capture_pointer();
+                    // Changes in pointer capture impact appearance, but not accessibility node
+                    ctx.request_paint_only();
                     trace!("Button {:?} pressed", ctx.widget_id());
                 }
             }
-            PointerEvent::PointerUp(_, _) => {
-                if ctx.is_active() && ctx.is_hot() && !ctx.is_disabled() {
-                    println!("submitted action data");
+            PointerEvent::PointerUp(_button, _) => {
+                if ctx.is_pointer_capture_target() && ctx.is_hovered() && !ctx.is_disabled() {
+                    // ctx.submit_action(Action::ButtonPressed(*button));
                     ctx.submit_action(Action::Other(Box::new(self.action_data.data.clone())));
                     trace!("Button {:?} released", ctx.widget_id());
                 }
-                ctx.request_paint();
-                ctx.set_active(false);
+                // Changes in pointer capture impact appearance, but not accessibility node
+                ctx.request_paint_only();
+                // This may no longer be needed in current Masonry (I think this was from a previous version of Masontry, and not actually my idea)
+                ctx.release_pointer();
             }
+            // This may no longer be needed in current Masonry (I think this was from a previous version of Masontry, and not actually my idea)
             PointerEvent::PointerLeave(_) => {
                 // If the screen was locked whilst holding down the mouse button, we don't get a `PointerUp`
                 // event, but should no longer be active
-                ctx.set_active(false);
+                ctx.release_pointer();
             }
             _ => (),
         }
         // self.label.on_pointer_event(ctx, event);
     }
 
-    fn on_text_event(&mut self, _ctx: &mut EventCtx, _event: &TextEvent) {
-        // self.label.on_text_event(ctx, event);
-    }
+    fn on_text_event(&mut self, _ctx: &mut EventCtx, _event: &TextEvent) {}
 
     fn on_access_event(&mut self, ctx: &mut EventCtx, event: &AccessEvent) {
-        if event.target == ctx.widget_id() {
+        if ctx.target() == ctx.widget_id() {
             match event.action {
-                accesskit::Action::Default => {
+                accesskit::Action::Click => {
                     ctx.submit_action(Action::ButtonPressed(PointerButton::Primary));
-                    ctx.request_paint();
                 }
                 _ => {}
             }
         }
-        // self.label.on_access_event(ctx, event);
     }
 
-    fn on_status_change(&mut self, ctx: &mut LifeCycleCtx, _event: &StatusChange) {
-        ctx.request_paint();
+    fn update(&mut self, ctx: &mut UpdateCtx, event: &Update) {
+        match event {
+            Update::HoveredChanged(_) | Update::FocusChanged(_) | Update::DisabledChanged(_) => {
+                ctx.request_paint_only();
+            }
+            _ => {}
+        }
     }
 
-    fn lifecycle(&mut self, ctx: &mut LifeCycleCtx, event: &LifeCycle) {
-        self.label.lifecycle(ctx, event);
+    fn register_children(&mut self, ctx: &mut masonry::core::RegisterCtx) {
+        ctx.register_child(&mut self.label);
     }
 
     fn layout(&mut self, ctx: &mut LayoutCtx, bc: &BoxConstraints) -> Size {
         let padding = Size::new(LABEL_INSETS.x_value(), LABEL_INSETS.y_value());
         let label_bc = bc.shrink(padding).loosen();
 
-        let label_size = self.label.layout(ctx, &label_bc);
+        let label_size = ctx.run_layout(&mut self.label, &label_bc);
 
         let baseline = ctx.child_baseline_offset(&self.label);
         ctx.set_baseline_offset(baseline + LABEL_INSETS.y1);
@@ -203,13 +206,12 @@ impl Widget for SpecialButton {
         let label_offset = (button_size.to_vec2() - label_size.to_vec2()) / 2.0;
         ctx.place_child(&mut self.label, label_offset.to_point());
 
-        trace!("Computed button size: {}", button_size);
         button_size
     }
 
     fn paint(&mut self, ctx: &mut PaintCtx, scene: &mut Scene) {
-        let is_active = ctx.is_active() && !ctx.is_disabled();
-        let is_hot = ctx.is_hot();
+        let is_active = ctx.is_pointer_capture_target() && !ctx.is_disabled();
+        let is_hovered = ctx.is_hovered();
         let size = ctx.size();
         let stroke_width = theme::BUTTON_BORDER_WIDTH;
 
@@ -226,7 +228,7 @@ impl Widget for SpecialButton {
             [theme::BUTTON_LIGHT, theme::BUTTON_DARK]
         };
 
-        let border_color = if is_hot && !ctx.is_disabled() {
+        let border_color = if is_hovered && !ctx.is_disabled() {
             theme::BORDER_LIGHT
         } else {
             theme::BORDER_DARK
@@ -240,41 +242,30 @@ impl Widget for SpecialButton {
             UnitPoint::TOP,
             UnitPoint::BOTTOM,
         );
-
-        self.label.paint(ctx, scene);
     }
 
     fn accessibility_role(&self) -> Role {
         Role::Button
     }
 
-    fn accessibility(&mut self, ctx: &mut AccessCtx) {
+    fn accessibility(&mut self, ctx: &mut AccessCtx, node: &mut Node) {
         // IMPORTANT: We don't want to merge this code in practice, because
         // the child label already has a 'name' property.
         // This is more of a proof of concept of `get_raw_ref()`.
         if false {
             let label = ctx.get_raw_ref(&self.label);
-            let name = label.widget().text().as_str().to_string();
-            ctx.current_node().set_name(name);
+            let name = label.widget().text().as_ref().to_string();
+            node.set_value(name);
         }
-        ctx.current_node()
-            .set_default_action_verb(DefaultActionVerb::Click);
-
-        self.label.accessibility(ctx);
+        node.add_action(accesskit::Action::Click);
     }
 
     fn children_ids(&self) -> SmallVec<[WidgetId; 16]> {
         smallvec![self.label.id()]
     }
 
-    fn make_trace_span(&self) -> Span {
-        trace_span!("Button")
-    }
-
-    // FIXME
-    #[cfg(FALSE)]
-    fn get_debug_text(&self) -> Option<String> {
-        Some(self.label.as_ref().text().as_str().to_string())
+    fn make_trace_span(&self, ctx: &QueryCtx<'_>) -> Span {
+        trace_span!("SpecialButton", id = ctx.widget_id().trace())
     }
 }
 
@@ -284,14 +275,15 @@ mod tests {
     use insta::assert_debug_snapshot;
 
     use super::*;
-    use masonry::{assert_render_snapshot, PointerButton};
-    use masonry::testing::{widget_ids, TestHarness, TestWidgetExt};
+    use masonry::assert_render_snapshot;
+    use masonry::core::StyleProperty;
+    use masonry::testing::{TestHarness, TestWidgetExt, widget_ids};
     use masonry::theme::PRIMARY_LIGHT;
 
     #[test]
     fn simple_button() {
         let [button_id] = widget_ids();
-        let widget = SpecialButton::new("Hello", Action::ButtonPressed).with_id(button_id);
+        let widget = SpecialButton::new("Hello", 0).with_id(button_id);
 
         let mut harness = TestHarness::create(widget);
 
@@ -311,9 +303,9 @@ mod tests {
     fn edit_button() {
         let image_1 = {
             let label = Label::new("The quick brown fox jumps over the lazy dog")
-                .with_text_brush(PRIMARY_LIGHT)
-                .with_text_size(20.0);
-            let button = SpecialButton::from_label(label, Action::ButtonPressed);
+                .with_brush(PRIMARY_LIGHT)
+                .with_style(StyleProperty::FontSize(20.0));
+            let button = SpecialButton::from_label(label,0);
 
             let mut harness = TestHarness::create_with_size(button, Size::new(50.0, 50.0));
 
@@ -321,21 +313,17 @@ mod tests {
         };
 
         let image_2 = {
-            let button = SpecialButton::new("Hello world", Action::ButtonPressed);
+            let button = SpecialButton::new("Hello world", 0);
 
             let mut harness = TestHarness::create_with_size(button, Size::new(50.0, 50.0));
 
             harness.edit_root_widget(|mut button| {
                 let mut button = button.downcast::<SpecialButton>();
-                // button.set_text("The quick brown fox jumps over the lazy dog");
+                SpecialButton::set_text(&mut button, "The quick brown fox jumps over the lazy dog");
 
-                // let mut label = button.label_mut();
-                let mut label = button.ctx.get_mut(&mut button.widget.label);
-                label.set_text("The quick brown fox jumps over the lazy dog");
-                label.set_text_properties(|props| {
-                    props.set_brush(PRIMARY_LIGHT);
-                    props.set_text_size(20.0);
-                });
+                let mut label = SpecialButton::label_mut(&mut button);
+                Label::set_brush(&mut label, PRIMARY_LIGHT);
+                Label::insert_style(&mut label, StyleProperty::FontSize(20.0));
             });
 
             harness.render()
