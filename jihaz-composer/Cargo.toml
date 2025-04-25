@@ -1,0 +1,48 @@
+[package]
+name = "jihaz-composer"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+jihaz = ["dep:jihaz"]
+serde = ["dep:serde"]
+xilem = ["dep:xilem", "dep:xilem_core"]
+
+[dependencies]
+jihaz           = { workspace = true, optional = true }
+jihaz-macros    = { workspace = true }
+jihaz-primal    = { workspace = true }
+serde           = { workspace = true, optional = true }
+tracing         = { workspace = true, features = ["default"] }
+
+# scraper         = { version = "*" }
+# glazier         = { git = "https://github.com/linebender/glazier", features = ["serde"] }
+accesskit       = { version = "0.16.0" }
+anyhow          = { version = "1.0" }
+bitflags        = "2.4.2"
+chrono          = "*"
+ico             = { version = "0.3.0" }
+itertools       = "0.12.1"
+lapce-xi-rope   = { version = "0.3.2", features = ["serde"] }
+lsp-types       = { version = "0.93", features = ["proposed"] }
+masonry         = { git = "https://github.com/linebender/xilem.git" }
+memchr          = "2.7.1"
+parking_lot     = { version = "0.12.0" }
+parley          = { git = "https://github.com/lapce/parley" }
+resvg           = { version = "0.41.0" }
+scraper         = { version = "*", optional = true }
+smallvec        = { version = "1.13.1" }
+strum           = "0.26.2"
+strum_macros    = "0.26.2"
+tauri-icns      = { version = "0.1.0" }
+time            = "0.3.20"
+tokio = { version = "1.39.1", features = ["rt", "rt-multi-thread", "time"] }
+tree-sitter     = "0.20.10"
+usvg            = { version = "0.41.0" }
+vello           = { version = "0.1.0" }
+winit           = "0.30.0"
+xilem           = { git = "https://github.com/linebender/xilem.git", optional = true }
+xilem_core      = { git = "https://github.com/linebender/xilem.git", optional = true }
+
+[dev-dependencies]
+insta = { version = "1.38.0" }

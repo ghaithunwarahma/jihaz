@@ -1,0 +1,12 @@
+[package]
+name = "jihaz-primal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bincode = "*"
+directories = "*"
+serde_json.workspace = true
+serde.workspace = true
+thiserror = "*"
+tracing = "*"

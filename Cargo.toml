@@ -1,0 +1,89 @@
+[workspace]
+resolver = "2"
+members = [
+    "jihaz-composer",
+    "jihaz-deferred",
+    "jihaz-macros",
+    "jihaz-primal",
+    "jihaz",
+    "xilem-plus-for-jihaz",
+]
+
+[workspace.lints]
+rust.unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(FALSE)',
+    'cfg(tarpaulin_include)',
+] }
+
+[workspace.dependencies]
+jihaz = { path = "./jihaz" }
+jihaz-composer = { path = "./jihaz-composer" }
+jihaz-deferred = { path = "./jihaz-deferred" }
+jihaz-macros = { path = "./jihaz-macros" }
+jihaz-primal = { path = "./jihaz-primal" }
+xilem-plus-for-jihaz = { path = "./xilem-plus-for-jihaz" }
+
+# I've noticed that kurbo is used from vello in xilem, but used from penico in xilem_web.
+# But really kurbo in vello is re-exported from the re-expored penico crate, so it doesn't really matter.
+directories = "*"
+kurbo = "0.11.0"
+# serde = { version = "1.0.136", features = ["derive"] }
+serde = "1.0"
+serde_json = "1.0.68"
+tracing = {version = "0.1.40", default-features = false}
+# parley = { git = "https://github.com/lapce/parley" }
+# matches xilem's version
+parley = { git = "https://github.com/linebender/parley", rev = "d4bb51b0e684681bd07be95fe0e5ad20068a10a3", features = [
+    "accesskit"
+]}
+
+# if this affects all crates, even those that don't have them as dependency; we should do it another way
+# masonry            = { git = "https://github.com/linebender/xilem.git" }
+# xilem              = { git = "https://github.com/linebender/xilem.git" }
+# xilem_core         = { git = "https://github.com/linebender/xilem.git" }
+# the fork makes sequence public
+# masonry            = { git = "https://github.com/ghaithunwarahma/xilem-fork.git" }
+# xilem              = { git = "https://github.com/ghaithunwarahma/xilem-fork.git" }
+# xilem_core         = { git = "https://github.com/ghaithunwarahma/xilem-fork.git" }
+masonry            = { path = "../xilem-fork/masonry" }
+xilem              = { path = "../xilem-fork/xilem" }
+xilem_core         = { path = "../xilem-fork/xilem_core" }
+
+# [workspace.dependencies.tracing]
+# git     = "https://github.com/tokio-rs/tracing"
+# rev     = "908cc432a5994f6e17c8f36e13c217dc40085704"
+# package = "tracing"
+
+# [workspace.dependencies.tracing-log]
+# git     = "https://github.com/tokio-rs/tracing"
+# rev     = "908cc432a5994f6e17c8f36e13c217dc40085704"
+# package = "tracing-log"
+
+# [workspace.dependencies.tracing-subscriber]
+# git     = "https://github.com/tokio-rs/tracing"
+# rev     = "908cc432a5994f6e17c8f36e13c217dc40085704"
+# package = "tracing-subscriber"
+
+# [workspace.dependencies.tracing-appender]
+# git     = "https://github.com/tokio-rs/tracing"
+# rev     = "908cc432a5994f6e17c8f36e13c217dc40085704"
+# package = "tracing-appender"
+
+[profile.release-lto]
+inherits      = "release"
+lto           = true
+codegen-units = 1
+
+# A profile which compiles all (non-workspace) dependencies in release mode
+# but Tarteel code in dev mode. This gives a good debugging experience for your
+# code and fast performance of other people's code. After the initial
+# build subsequent ones are as fast as dev mode builds.
+# See https://doc.rust-lang.org/cargo/reference/profiles.html
+# To use this profile:
+#   cargo build --profile fastdev
+#   cargo run --profile fastdev --bin tarteel
+[profile.fastdev.package."*"]
+opt-level = 3
+
+[profile.fastdev]
+inherits = "dev"

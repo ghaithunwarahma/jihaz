@@ -1,0 +1,64 @@
+[package]
+name = "xilem-plus-for-jihaz"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+jihaz                   = { workspace = true }
+jihaz-deferred          = { workspace = true, features = ["xilem"]}
+jihaz-macros            = { workspace = true }
+jihaz-primal            = { workspace = true }
+serde                   = { workspace = true }
+serde_json              = { workspace = true }
+tracing                 = { workspace = true, features = ["default"] }
+tracing-subscriber      = { version = "0.3.18", features = ["env-filter", "time"] }
+parley                  = { workspace = true }
+hashbrown               = "0.15.2"
+peniko                  = { version = "0.3.1", default-features = false, features = ["serde"] }
+swash                   = { version = "0.2.0", default-features = false }
+
+masonry               = { workspace = true }
+xilem                 = { workspace = true }
+xilem_core            = { workspace = true }
+
+# tracing            = { workspace = true }
+# tracing-log        = { workspace = true }
+# tracing-subscriber = { workspace = true }
+# tracing-appender   = { workspace = true }
+
+# scraper            = { version = "*" }
+# glazier            = { git = "https://github.com/linebender/glazier", features = ["serde"] }
+accesskit          = "0.17.0"
+accesskit_winit    = "0.23.0"
+anyhow            = { version = "1.0" }
+bitflags           = "1.3.2"
+chrono             = "*"
+crossbeam-channel  = { version = "0.5.12" }
+ico                = { version = "0.3.0" }
+kurbo              = { version = "0.11.1", features = ["serde"] }
+lapce-xi-rope      = { version = "0.3.2", features = ["serde"] }
+lsp-types          = { version = "0.93", features = ["proposed"] }
+
+parking_lot        = { version = "0.12.0" }
+resvg              = { version = "0.41.0" }
+scraper            = { version = "*", optional = true }
+smallvec           = { version = "1.13.1", features = ["const_generics"] }
+strum              = "0.21.0" # follow same version as system-deps in lockfile
+strum_macros       = "0.21.1" # ditto
+tauri-icns         = { version = "0.1.0" }
+time               = "0.3.20"
+tokio              = { version = "1.39.1", features = ["rt", "rt-multi-thread", "time"] }
+tree-sitter        = "0.20.10"
+usvg               = { version = "0.41.0" }
+winit              = "0.30.0"
+
+[[bin]]
+name = "jihaz-app"
+path = "src/bin/jihaz_app.rs"
+
+[[bin]]
+name = "jihaz-app-sample"
+path = "src/bin/jihaz_app_sample.rs"
+
+[dev-dependencies]
+insta = { version = "1.38.0" }

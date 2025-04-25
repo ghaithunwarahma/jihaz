@@ -1,0 +1,11 @@
+## Rust
+target/
+assets/
+# Ignore Cargo.lock as this is a library
+Cargo.lock
+
+.vscode
+.cspell
+.DS_Store
+
+older_files/
