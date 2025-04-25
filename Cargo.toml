@@ -9,6 +9,12 @@ members = [
     "xilem-plus-for-jihaz",
 ]
 
+[workspace.package]
+edition = "2024"
+# Keep in sync with RUST_MIN_VER in .github/workflows/ci.yml, with the relevant README.md files.
+rust-version = "1.86"
+repository = "https://github.com/ghaithunwarahma/jihaz"
+
 [workspace.lints]
 rust.unexpected_cfgs = { level = "warn", check-cfg = [
     'cfg(FALSE)',
@@ -69,11 +75,13 @@ xilem_core         = { path = "../xilem-fork/xilem_core" }
 # rev     = "908cc432a5994f6e17c8f36e13c217dc40085704"
 # package = "tracing-appender"
 
+# As seen in Lapce
 [profile.release-lto]
 inherits      = "release"
 lto           = true
 codegen-units = 1
 
+# As seen in Lapce
 # A profile which compiles all (non-workspace) dependencies in release mode
 # but Tarteel code in dev mode. This gives a good debugging experience for your
 # code and fast performance of other people's code. After the initial
@@ -85,5 +93,14 @@ codegen-units = 1
 [profile.fastdev.package."*"]
 opt-level = 3
 
+# As seen in Lapce
 [profile.fastdev]
 inherits = "dev"
+
+# As seen in Xilem
+[profile.ci]
+inherits = "dev"
+debug = 0 # Don't compile debug info to reduce compilation artifact size for cache benefits.
+strip = "debuginfo" # Implied by debug = 0 since Rust 1.77, but still needed for an older MSRV.
+[profile.ci.package."*"]
+debug-assertions = true # Keep always on for dependencies for cache reuse.
